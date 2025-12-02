@@ -1,0 +1,7 @@
+{
+  "name": "Life4Cuts AI",
+  "description": "A trendy PWA photo booth app inspired by Korean Life Four Cuts, featuring AI-powered caption generation.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
