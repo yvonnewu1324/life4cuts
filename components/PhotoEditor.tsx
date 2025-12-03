@@ -26,6 +26,14 @@ const PhotoEditor: React.FC<PhotoEditorProps> = ({ photos, onRetake }) => {
   const [windowWidth, setWindowWidth] = useState(window.innerWidth);
   const [activeTab, setActiveTab] = useState<'layout' | 'color' | 'filter' | 'caption' | 'magic'>('layout');
 
+  // Pinch-to-zoom state
+  const [zoom, setZoom] = useState(1);
+  const [panX, setPanX] = useState(0);
+  const [panY, setPanY] = useState(0);
+  const [lastTouchDistance, setLastTouchDistance] = useState<number | null>(null);
+  const [lastTouchCenter, setLastTouchCenter] = useState<{ x: number; y: number } | null>(null);
+  const previewContainerRef = useRef<HTMLDivElement>(null);
+
   // Detect if device is iPhone, iPad, or Android
   const isMobileDevice = () => {
     const userAgent = navigator.userAgent || navigator.vendor || (window as any).opera;
@@ -160,18 +168,29 @@ const PhotoEditor: React.FC<PhotoEditorProps> = ({ photos, onRetake }) => {
             img.src = p.dataUrl;
         }));
         
-        try {
-            const imgs = await Promise.all(promises);
-            if (isMounted) {
-                setLoadedImages(imgs);
-            }
-        } catch (e) {
+      try {
+        const imgs = await Promise.all(promises);
+        if (isMounted) {
+          setLoadedImages(imgs);
+          // Reset zoom when photos change
+          setZoom(1);
+          setPanX(0);
+          setPanY(0);
+        }
+      } catch (e) {
             console.error("Failed to load images", e);
         }
     };
     loadImages();
     return () => { isMounted = false; };
   }, [photos]);
+
+  // Reset zoom when layout changes
+  useEffect(() => {
+    setZoom(1);
+    setPanX(0);
+    setPanY(0);
+  }, [frameConfig.layout]);
 
   // Handle window resize for responsive canvas
   useEffect(() => {
@@ -346,6 +365,72 @@ const PhotoEditor: React.FC<PhotoEditorProps> = ({ photos, onRetake }) => {
     link.click();
   };
 
+  // Calculate distance between two touches
+  const getTouchDistance = (touch1: Touch, touch2: Touch): number => {
+    const dx = touch2.clientX - touch1.clientX;
+    const dy = touch2.clientY - touch1.clientY;
+    return Math.sqrt(dx * dx + dy * dy);
+  };
+
+  // Calculate center point between two touches
+  const getTouchCenter = (touch1: Touch, touch2: Touch): { x: number; y: number } => {
+    return {
+      x: (touch1.clientX + touch2.clientX) / 2,
+      y: (touch1.clientY + touch2.clientY) / 2
+    };
+  };
+
+  // Handle touch start for pinch zoom
+  const handleTouchStart = (e: React.TouchEvent) => {
+    if (e.touches.length === 2) {
+      const distance = getTouchDistance(e.touches[0], e.touches[1]);
+      const center = getTouchCenter(e.touches[0], e.touches[1]);
+      setLastTouchDistance(distance);
+      setLastTouchCenter(center);
+    }
+  };
+
+  // Handle touch move for pinch zoom
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (e.touches.length === 2 && lastTouchDistance !== null && lastTouchCenter !== null) {
+      e.preventDefault(); // Prevent scrolling while pinching
+      
+      const currentDistance = getTouchDistance(e.touches[0], e.touches[1]);
+      const currentCenter = getTouchCenter(e.touches[0], e.touches[1]);
+      
+      // Calculate zoom factor
+      const scaleChange = currentDistance / lastTouchDistance;
+      const newZoom = Math.max(1, Math.min(3, zoom * scaleChange)); // Limit zoom between 1x and 3x
+      
+      // Calculate pan offset based on center movement
+      // Apply some damping to make it smoother
+      const deltaX = (currentCenter.x - lastTouchCenter.x) / newZoom;
+      const deltaY = (currentCenter.y - lastTouchCenter.y) / newZoom;
+      
+      setPanX(prev => prev + deltaX);
+      setPanY(prev => prev + deltaY);
+      
+      setZoom(newZoom);
+      setLastTouchDistance(currentDistance);
+      setLastTouchCenter(currentCenter);
+    }
+  };
+
+  // Handle touch end
+  const handleTouchEnd = () => {
+    setLastTouchDistance(null);
+    setLastTouchCenter(null);
+  };
+
+  // Reset zoom on double tap (mobile only)
+  const handleDoubleClick = () => {
+    if (isMobileDevice()) {
+      setZoom(1);
+      setPanX(0);
+      setPanY(0);
+    }
+  };
+
   const handleAiCaption = async () => {
     if (!vibeInput.trim()) {
         alert("Enter a vibe first!");
@@ -387,12 +472,26 @@ const PhotoEditor: React.FC<PhotoEditorProps> = ({ photos, onRetake }) => {
       <div className="flex-1 flex flex-col md:flex-row gap-4 md:gap-6 p-3 md:p-4 max-w-6xl mx-auto w-full overflow-hidden min-h-0">
         
         {/* Preview Area - Fixed, no scroll */}
-        <div className="flex-1 flex justify-center items-center bg-pink-100/50 rounded-2xl md:rounded-3xl p-3 md:p-6 lg:p-8 overflow-hidden border-2 md:border-4 border-white border-dashed relative min-h-0 md:min-h-0">
+        <div 
+          ref={previewContainerRef}
+          className="flex-1 flex justify-center items-center bg-pink-100/50 rounded-2xl md:rounded-3xl p-3 md:p-6 lg:p-8 overflow-hidden border-2 md:border-4 border-white border-dashed relative min-h-0 md:min-h-0"
+          onTouchStart={handleTouchStart}
+          onTouchMove={handleTouchMove}
+          onTouchEnd={handleTouchEnd}
+        >
             <div className="absolute top-2 left-2 md:top-4 md:left-4 z-10 flex flex-col gap-2">
                 {frameConfig.layout === 'polaroid' && (
                     <span className="bg-white/80 px-2 md:px-3 py-1 rounded-full text-[10px] md:text-xs font-bold text-pink-500 shadow-sm animate-pulse">
                         Tap photo to change
                     </span>
+                )}
+                {isMobileDevice() && zoom > 1 && (
+                    <button
+                        onClick={() => { setZoom(1); setPanX(0); setPanY(0); }}
+                        className="bg-white/80 px-2 md:px-3 py-1 rounded-full text-[10px] md:text-xs font-bold text-pink-500 shadow-sm animate-fade-in"
+                    >
+                        Reset
+                    </button>
                 )}
             </div>
             
@@ -400,8 +499,15 @@ const PhotoEditor: React.FC<PhotoEditorProps> = ({ photos, onRetake }) => {
           <canvas 
             ref={canvasRef} 
             onClick={handleCanvasClick}
-            className={`shadow-2xl max-w-full max-h-full w-auto h-auto object-contain transition-transform duration-500 ${frameConfig.layout === 'polaroid' ? 'cursor-pointer' : ''}`}
-            style={{ borderRadius: '2px' }}
+            onDoubleClick={handleDoubleClick}
+            className={`shadow-2xl max-w-full max-h-full w-auto h-auto object-contain ${frameConfig.layout === 'polaroid' ? 'cursor-pointer' : ''}`}
+            style={{ 
+              borderRadius: '2px',
+              transform: `translate(${panX}px, ${panY}px) scale(${zoom})`,
+              transformOrigin: 'center center',
+              touchAction: 'none', // Prevent default touch behaviors
+              willChange: 'transform' // Optimize for GPU animation
+            }}
           />
         </div>
 
