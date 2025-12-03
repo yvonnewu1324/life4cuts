@@ -26,6 +26,12 @@ const PhotoEditor: React.FC<PhotoEditorProps> = ({ photos, onRetake }) => {
   const [windowWidth, setWindowWidth] = useState(window.innerWidth);
   const [activeTab, setActiveTab] = useState<'layout' | 'color' | 'filter' | 'caption' | 'magic'>('layout');
 
+  // Detect if device is iPhone, iPad, or Android
+  const isMobileDevice = () => {
+    const userAgent = navigator.userAgent || navigator.vendor || (window as any).opera;
+    return /android|webos|iphone|ipad|ipod|blackberry|iemobile|opera mini/i.test(userAgent.toLowerCase());
+  };
+
   // Helper function to apply filters manually (for mobile compatibility)
   const applyFilterToImage = (
     ctx: CanvasRenderingContext2D,
@@ -186,15 +192,15 @@ const PhotoEditor: React.FC<PhotoEditorProps> = ({ photos, onRetake }) => {
       const ctx = canvas.getContext('2d');
       if (!ctx) return;
 
-      // Configuration - Responsive sizing based on screen width
+      // Configuration - Fixed high resolution for export quality
       const layout = frameConfig.layout;
-      const isMobile = windowWidth < 768;
-      const margin = isMobile ? 20 : 40;
-      const spacing = isMobile ? 15 : 30;
-      const maxWidth = isMobile ? windowWidth - 40 : 600;
-      const photoWidth = isMobile ? Math.min(maxWidth, 400) : 600;
+      // Detect mobile device (iPhone, iPad, Android) to determine filter method
+      const isMobile = isMobileDevice();
+      const margin = 40;
+      const spacing = 30;
+      const photoWidth = 600;
       const photoHeight = Math.round(photoWidth * (4/3)); // 3:4 aspect ratio standard
-      const bottomAreaHeight = isMobile ? 180 : 250;
+      const bottomAreaHeight = 250;
       
       let cols = 1;
       let rows = 4;
@@ -301,9 +307,9 @@ const PhotoEditor: React.FC<PhotoEditorProps> = ({ photos, onRetake }) => {
       ctx.fillStyle = frameConfig.textColor;
       ctx.textAlign = 'center';
       
-      // Date - Responsive font size
-      const dateFontSize = isMobile ? 24 : 40;
-      const captionFontSize = isMobile ? 48 : 80;
+      // Date - High resolution font size
+      const dateFontSize = 40;
+      const captionFontSize = 80;
       // No line spacing between date and caption
       const lineSpacing = 0;
       
