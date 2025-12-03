@@ -357,12 +357,48 @@ const PhotoEditor: React.FC<PhotoEditorProps> = ({ photos, onRetake }) => {
     drawCanvas();
   }, [loadedImages, frameConfig, caption, date, filter, currentPhotoIndex, windowWidth]);
 
-  const handleDownload = () => {
+  const handleDownload = async () => {
     if (!canvasRef.current) return;
-    const link = document.createElement('a');
-    link.download = `life4cuts-${Date.now()}.png`;
-    link.href = canvasRef.current.toDataURL('image/png');
-    link.click();
+
+    const isMobile = isMobileDevice();
+    const fileName = `life4cuts-${Date.now()}.png`;
+
+    try {
+      // Convert canvas to blob
+      const blob = await new Promise<Blob | null>(resolve => 
+        canvasRef.current?.toBlob(resolve, 'image/png')
+      );
+      
+      if (!blob) return;
+
+      // On mobile, try to share/save directly
+      if (isMobile && navigator.share && navigator.canShare) {
+        const file = new File([blob], fileName, { type: 'image/png' });
+        if (navigator.canShare({ files: [file] })) {
+          await navigator.share({
+            files: [file],
+            title: 'Life4Cuts Photo',
+            text: 'My Life4Cuts photo strip!'
+          });
+          return;
+        }
+      }
+
+      // Fallback for desktop or if share fails
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.download = fileName;
+      link.href = url;
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Error saving photo:', error);
+      // Last resort fallback
+      const link = document.createElement('a');
+      link.download = fileName;
+      link.href = canvasRef.current.toDataURL('image/png');
+      link.click();
+    }
   };
 
   // Calculate distance between two touches
